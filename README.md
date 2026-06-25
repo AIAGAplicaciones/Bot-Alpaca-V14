@@ -33,8 +33,14 @@ rebalance:
   threshold_absolute_weight: 0.05   # banda 45%-55%
   min_trade_value_eur: 10
 capital:
-  total_target_exposure_eur: 400
+  total_target_exposure_eur: 400    # modo real
+paper_mode:                          # solo en mode: paper (dinero falso)
+  total_target_exposure_eur: 10000
 ```
+
+El capital depende del modo: en `paper` usa el bloque `paper_mode` (10.000 €
+para que la prueba con dinero falso se vea), y en `real` vuelve a los 400 €
+(200 SPY + 200 QQQ). El kill switch se escala igual.
 
 Dónde van las órdenes según la configuración:
 

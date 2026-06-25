@@ -17,7 +17,8 @@ def make_config() -> BotConfig:
                       "check_frequency": "monthly"},
         "orders": {"buy_limit_buffer": 0.002, "sell_limit_buffer": 0.002},
         "risk": {"max_total_exposure_eur": 400, "max_symbols": ["SPY", "QQQ"]},
-        "kill_switch": {"enabled": True, "stop_if_unexpected_position": True},
+        "kill_switch": {"enabled": True, "stop_if_unexpected_position": True,
+                        "max_daily_loss_eur": 20, "max_weekly_loss_eur": 40},
         "logging": {"directory": "logs"},
     })
 
@@ -67,3 +68,17 @@ def test_5_unexpected_symbol_blocks():
     result = risk.validate_current_positions(["SPY", "QQQ", "GLD"])
     assert not result.ok
     assert "unexpected_position" in result.reason
+
+
+def test_paper_mode_uses_larger_capital():
+    raw = make_config().raw
+    raw["paper_mode"] = {"total_target_exposure_eur": 10000, "max_total_exposure_eur": 10000,
+                         "max_daily_loss_eur": 1000, "max_weekly_loss_eur": 2000}
+    # Paper mode -> overrides apply.
+    paper = BotConfig(raw={**raw, "bot": {**raw["bot"], "mode": "paper"}})
+    assert paper.total_target_exposure_eur == 10000
+    assert paper.kill_switch["max_daily_loss_eur"] == 1000
+    # Real mode -> base values.
+    real = BotConfig(raw={**raw, "bot": {**raw["bot"], "mode": "real"}})
+    assert real.total_target_exposure_eur == 400
+    assert real.kill_switch["max_daily_loss_eur"] == 20

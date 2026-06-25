@@ -34,9 +34,21 @@ class BotConfig:
     def symbols(self) -> list[str]:
         return list(self.target_weights.keys())
 
+    # ---- per-mode overrides ----
+    @property
+    def _paper_override(self) -> dict[str, Any]:
+        # Applied only in paper mode, so the fake-money test can use a larger
+        # size while real trading stays at the conservative base values.
+        if self.mode == "paper":
+            return dict(self.raw.get("paper_mode", {}))
+        return {}
+
     # ---- capital ----
     @property
     def total_target_exposure_eur(self) -> float:
+        override = self._paper_override
+        if "total_target_exposure_eur" in override:
+            return float(override["total_target_exposure_eur"])
         return float(self.raw["capital"]["total_target_exposure_eur"])
 
     @property
@@ -80,6 +92,9 @@ class BotConfig:
     # ---- risk ----
     @property
     def max_total_exposure_eur(self) -> float:
+        override = self._paper_override
+        if "max_total_exposure_eur" in override:
+            return float(override["max_total_exposure_eur"])
         return float(self.raw["risk"]["max_total_exposure_eur"])
 
     @property
@@ -89,7 +104,12 @@ class BotConfig:
     # ---- kill switch ----
     @property
     def kill_switch(self) -> dict[str, Any]:
-        return dict(self.raw.get("kill_switch", {}))
+        ks = dict(self.raw.get("kill_switch", {}))
+        override = self._paper_override
+        for key in ("max_daily_loss_eur", "max_weekly_loss_eur"):
+            if key in override:
+                ks[key] = override[key]
+        return ks
 
     # ---- logging ----
     @property
