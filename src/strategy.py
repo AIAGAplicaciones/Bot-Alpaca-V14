@@ -1,93 +1,134 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-
-import pandas as pd
+from dataclasses import asdict, dataclass, field
 
 from .config import BotConfig
 
+EPSILON = 1e-9
+
 
 @dataclass(frozen=True)
-class Signal:
+class RebalanceAction:
     symbol: str
-    close: float
-    sma200: float
-    return_3m: float
-    return_6m: float
-    momentum_score: float
-    trend_filter: bool
-    momentum_filter: bool
-    eligible: bool
-    rank: int | None = None
-    decision: str = ""
-    reason: str = ""
-
-    def to_dict(self) -> dict:
-        return asdict(self)
+    side: str  # "buy" | "sell"
+    value_eur: float
 
 
-class MonthlyMomentumStrategy:
+@dataclass(frozen=True)
+class RebalanceDecision:
+    strategy_name: str
+    rebalance_needed: bool
+    reason: str
+    total_value: float
+    values: dict[str, float]
+    weights: dict[str, float]
+    target_weights: dict[str, float]
+    actions: list[RebalanceAction] = field(default_factory=list)
+
+    def to_log(self) -> dict:
+        payload = {
+            "strategy_name": self.strategy_name,
+            "total_value": round(self.total_value, 4),
+            "rebalance_needed": self.rebalance_needed,
+            "reason": self.reason,
+            "orders_planned": [asdict(a) for a in self.actions],
+        }
+        for symbol in self.target_weights:
+            payload[f"{symbol.lower()}_value"] = round(self.values.get(symbol, 0.0), 4)
+            payload[f"{symbol.lower()}_weight"] = round(self.weights.get(symbol, 0.0), 6)
+            payload[f"target_{symbol.lower()}_weight"] = self.target_weights[symbol]
+        return payload
+
+
+class ThresholdRebalanceStrategy:
+    """Fixed-allocation rebalancer.
+
+    Holds the target weights (e.g. 50% SPY / 50% QQQ) and only trades when a
+    position drifts outside the allowed band (target +/- threshold). No
+    momentum, no SMA, no ranking — deliberately simple.
+
+    All values are in a single currency (the caller decides which); the
+    rebalance/no-trade decision depends only on weights, which are
+    currency-invariant.
+    """
+
     def __init__(self, config: BotConfig):
         self.config = config
+        self.name = str(config.raw.get("strategy", {}).get("name", "threshold_rebalance"))
+        self.weights = config.target_weights
+        self.threshold = config.rebalance_threshold
+        self.min_trade = config.min_trade_value_eur
+        self.total_target = config.total_target_exposure_eur
 
-    def calculate_signal(self, symbol: str, df: pd.DataFrame) -> Signal:
-        adjusted_close = df["Adj_Close"].dropna()
-        min_len = max(self.config.sma_period, self.config.return_6m_sessions) + 1
-        if len(adjusted_close) < min_len:
-            raise ValueError(f"not_enough_data_for_signal:{symbol}")
+    def decide(self, position_values: dict[str, float]) -> RebalanceDecision:
+        symbols = list(self.weights)
+        values = {s: float(position_values.get(s, 0.0)) for s in symbols}
+        total = sum(values.values())
 
-        close = float(adjusted_close.iloc[-1])
-        sma200 = float(adjusted_close.iloc[-self.config.sma_period:].mean())
-        close_3m_ago = float(adjusted_close.iloc[-1 - self.config.return_3m_sessions])
-        close_6m_ago = float(adjusted_close.iloc[-1 - self.config.return_6m_sessions])
-
-        return_3m = close / close_3m_ago - 1
-        return_6m = close / close_6m_ago - 1
-        momentum_score = (
-            self.config.momentum_6m_weight * return_6m
-            + self.config.momentum_3m_weight * return_3m
-        )
-        trend_filter = close > sma200
-        momentum_filter = momentum_score > 0
-        eligible = trend_filter and momentum_filter
-
-        if not trend_filter:
-            reason = "close_below_or_equal_sma200"
-        elif not momentum_filter:
-            reason = "momentum_not_positive"
-        else:
-            reason = "eligible"
-
-        return Signal(
-            symbol=symbol,
-            close=close,
-            sma200=sma200,
-            return_3m=return_3m,
-            return_6m=return_6m,
-            momentum_score=momentum_score,
-            trend_filter=trend_filter,
-            momentum_filter=momentum_filter,
-            eligible=eligible,
-            reason=reason,
-        )
-
-    def select_targets(self, data: dict[str, pd.DataFrame]) -> tuple[list[str], list[Signal]]:
-        signals = [self.calculate_signal(symbol, data[symbol]) for symbol in self.config.symbols]
-        eligible = [signal for signal in signals if signal.eligible]
-        ranked = sorted(eligible, key=lambda s: s.momentum_score, reverse=True)
-
-        rank_by_symbol = {signal.symbol: idx + 1 for idx, signal in enumerate(ranked)}
-        final_signals: list[Signal] = []
-        top_symbols = [signal.symbol for signal in ranked[: self.config.max_positions]]
-
-        for signal in signals:
-            decision = "buy_or_hold" if signal.symbol in top_symbols else "ignore_or_sell"
-            final_signals.append(
-                Signal(
-                    **{**signal.to_dict(), "rank": rank_by_symbol.get(signal.symbol), "decision": decision}
-                )
+        # ---- Empty portfolio: create the initial 50/50 allocation ----
+        if total <= EPSILON:
+            actions = [
+                RebalanceAction(s, "buy", self.total_target * self.weights[s])
+                for s in symbols
+            ]
+            weights = {s: self.weights[s] for s in symbols}
+            return RebalanceDecision(
+                strategy_name=self.name,
+                rebalance_needed=True,
+                reason="initial_allocation",
+                total_value=0.0,
+                values=values,
+                weights=weights,
+                target_weights=self.weights,
+                actions=actions,
             )
 
-        if not top_symbols and not self.config.use_cash_defensive:
-            return [self.config.defensive_asset], final_signals
-        return top_symbols, final_signals
+        weights = {s: values[s] / total for s in symbols}
+        out_of_band = any(abs(weights[s] - self.weights[s]) > self.threshold for s in symbols)
+
+        if not out_of_band:
+            return RebalanceDecision(
+                strategy_name=self.name,
+                rebalance_needed=False,
+                reason="within_band",
+                total_value=total,
+                values=values,
+                weights=weights,
+                target_weights=self.weights,
+                actions=[],
+            )
+
+        targets = {s: total * self.weights[s] for s in symbols}
+        deltas = {s: targets[s] - values[s] for s in symbols}
+        trade_size = max((abs(d) for d in deltas.values()), default=0.0)
+
+        if trade_size < self.min_trade:
+            return RebalanceDecision(
+                strategy_name=self.name,
+                rebalance_needed=False,
+                reason="below_min_trade_value",
+                total_value=total,
+                values=values,
+                weights=weights,
+                target_weights=self.weights,
+                actions=[],
+            )
+
+        actions: list[RebalanceAction] = []
+        for s in symbols:
+            d = deltas[s]
+            if d > EPSILON:
+                actions.append(RebalanceAction(s, "buy", d))
+            elif d < -EPSILON:
+                actions.append(RebalanceAction(s, "sell", -d))
+
+        return RebalanceDecision(
+            strategy_name=self.name,
+            rebalance_needed=True,
+            reason="out_of_band",
+            total_value=total,
+            values=values,
+            weights=weights,
+            target_weights=self.weights,
+            actions=actions,
+        )

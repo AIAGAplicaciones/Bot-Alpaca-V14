@@ -11,6 +11,11 @@ import yaml
 class BotConfig:
     raw: dict[str, Any]
 
+    # ---- bot ----
+    @property
+    def name(self) -> str:
+        return str(self.raw.get("bot", {}).get("name", "bot"))
+
     @property
     def mode(self) -> str:
         return str(self.raw["bot"]["mode"])
@@ -19,29 +24,20 @@ class BotConfig:
     def real_trading_enabled(self) -> bool:
         return bool(self.raw["bot"].get("real_trading_enabled", False))
 
+    # ---- portfolio ----
+    @property
+    def target_weights(self) -> dict[str, float]:
+        weights = self.raw["portfolio"]["target_weights"]
+        return {str(k): float(v) for k, v in weights.items()}
+
     @property
     def symbols(self) -> list[str]:
-        return list(self.raw["universe"]["risk_etfs"])
+        return list(self.target_weights.keys())
 
+    # ---- capital ----
     @property
-    def defensive_asset(self) -> str:
-        return str(self.raw["universe"].get("defensive_asset", "SHY"))
-
-    @property
-    def use_cash_defensive(self) -> bool:
-        return bool(self.raw["defensive_mode"].get("use_cash", True))
-
-    @property
-    def max_positions(self) -> int:
-        return int(self.raw["strategy"]["max_positions"])
-
-    @property
-    def capital_per_etf_eur(self) -> float:
-        return float(self.raw["capital"]["capital_per_etf_eur"])
-
-    @property
-    def max_total_exposure_eur(self) -> float:
-        return float(self.raw["capital"]["max_total_exposure_eur"])
+    def total_target_exposure_eur(self) -> float:
+        return float(self.raw["capital"]["total_target_exposure_eur"])
 
     @property
     def allow_fractional_shares(self) -> bool:
@@ -51,26 +47,20 @@ class BotConfig:
     def fallback_fx_rate(self) -> float:
         return float(self.raw["capital"].get("fallback_fx_rate", 1.08))
 
+    # ---- rebalance ----
     @property
-    def sma_period(self) -> int:
-        return int(self.raw["indicators"]["sma_trend_period"])
+    def rebalance_threshold(self) -> float:
+        return float(self.raw["rebalance"]["threshold_absolute_weight"])
 
     @property
-    def return_3m_sessions(self) -> int:
-        return int(self.raw["indicators"]["return_3m_sessions"])
+    def min_trade_value_eur(self) -> float:
+        return float(self.raw["rebalance"].get("min_trade_value_eur", 0.0))
 
     @property
-    def return_6m_sessions(self) -> int:
-        return int(self.raw["indicators"]["return_6m_sessions"])
+    def check_frequency(self) -> str:
+        return str(self.raw["rebalance"].get("check_frequency", "monthly"))
 
-    @property
-    def momentum_6m_weight(self) -> float:
-        return float(self.raw["indicators"]["momentum_formula"]["return_6m_weight"])
-
-    @property
-    def momentum_3m_weight(self) -> float:
-        return float(self.raw["indicators"]["momentum_formula"]["return_3m_weight"])
-
+    # ---- orders ----
     @property
     def buy_limit_buffer(self) -> float:
         return float(self.raw["orders"]["buy_limit_buffer"])
@@ -80,8 +70,31 @@ class BotConfig:
         return float(self.raw["orders"]["sell_limit_buffer"])
 
     @property
+    def cancel_unfilled_end_of_day(self) -> bool:
+        return bool(self.raw["orders"].get("cancel_unfilled_end_of_day", True))
+
+    @property
+    def prevent_duplicate_orders(self) -> bool:
+        return bool(self.raw["orders"].get("prevent_duplicate_orders", True))
+
+    # ---- risk ----
+    @property
+    def max_total_exposure_eur(self) -> float:
+        return float(self.raw["risk"]["max_total_exposure_eur"])
+
+    @property
+    def max_orders_per_run(self) -> int:
+        return int(self.raw["risk"].get("max_orders_per_run", 4))
+
+    # ---- kill switch ----
+    @property
+    def kill_switch(self) -> dict[str, Any]:
+        return dict(self.raw.get("kill_switch", {}))
+
+    # ---- logging ----
+    @property
     def log_dir(self) -> Path:
-        return Path(str(self.raw["logging"].get("directory", "logs")))
+        return Path(str(self.raw.get("logging", {}).get("directory", "logs")))
 
 
 def load_config(path: str | Path = "config.yaml") -> BotConfig:

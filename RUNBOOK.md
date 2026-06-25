@@ -1,45 +1,49 @@
 # Runbook operativo
 
-## Antes de cada ejecución real
+## Estrategia activa
 
-1. Confirmar que `config.yaml` tiene:
-   - `mode: paper` si aún estás probando.
-   - `real_trading_enabled: false` salvo activación manual.
-2. Confirmar claves de Alpaca Paper en `.env`.
-3. Ejecutar:
+50% SPY / 50% QQQ, rebalanceo solo si algún peso sale de la banda 45%-55%.
+
+## Antes de operar
+
+1. Confirmar en `config.yaml`:
+   - `bot.mode: paper` mientras pruebas.
+   - `bot.real_trading_enabled: false` salvo activación manual.
+2. Configurar variables en Railway (ver `.env.example`).
+3. Prueba local:
 
 ```bash
-python main.py --dry-run --force
+python main.py --dry-run
 ```
 
-4. Revisar logs:
-   - `logs/signals.jsonl`
-   - `logs/portfolio.jsonl`
-   - `logs/errors.jsonl`
+4. Revisar logs en `logs/`:
+   - `portfolio.jsonl` (decisión y pesos)
+   - `orders.jsonl`
+   - `rejected.jsonl`
+   - `errors.jsonl`
 
-## Activación real
+   Y, si hay PostgreSQL, las tablas `portfolio_snapshots`, `bot_orders`,
+   `bot_runs`, `known_positions`, `state_kv`.
 
-No activar real hasta cumplir:
+## Activación gradual
 
-- 1 mes paper sin errores.
-- 0 órdenes duplicadas.
-- 0 operaciones fuera de horario.
-- 0 posiciones inesperadas.
-- 0 fallos de datos sin bloqueo.
+1. **Paper interno** (defecto): `mode: paper`. Solo calcula y registra.
+2. **Alpaca Paper** (sin dinero real): `mode: real`, `real_trading_enabled: true`,
+   `ALPACA_PAPER=true`.
+3. **Real**: lo anterior con `ALPACA_PAPER=false`.
 
-Cambiar solo entonces:
-
-```yaml
-mode: real
-real_trading_enabled: true
-```
+No pasar a real hasta tener semanas de paper sin errores ni posiciones
+inesperadas.
 
 ## Apagado de emergencia
 
-Cambiar inmediatamente:
+Cambiar inmediatamente y redeploy:
 
 ```yaml
-real_trading_enabled: false
+bot:
+  real_trading_enabled: false
 ```
 
-Y detener el proceso en Railway/VPS.
+El kill switch ya detiene el bot automáticamente si faltan datos, el broker no
+responde, hay posiciones inesperadas, errores de orden o pérdidas que superan
+los límites configurados.

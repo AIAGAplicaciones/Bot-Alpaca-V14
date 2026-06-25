@@ -19,11 +19,11 @@ class JsonlLogger:
         with open(self.log_dir / filename, "a", encoding="utf-8") as f:
             f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
 
-    def signal(self, payload: dict[str, Any]) -> None:
-        self._write("signals.jsonl", payload)
-
     def portfolio(self, payload: dict[str, Any]) -> None:
         self._write("portfolio.jsonl", payload)
+
+    def rejected(self, payload: dict[str, Any]) -> None:
+        self._write("rejected.jsonl", payload)
 
     def order(self, payload: dict[str, Any]) -> None:
         self._write("orders.jsonl", payload)

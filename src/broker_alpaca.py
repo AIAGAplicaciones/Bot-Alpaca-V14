@@ -13,7 +13,7 @@ from .config import BotConfig
 class BrokerPosition:
     symbol: str
     qty: float
-    market_value: float
+    market_value: float  # USD
 
 
 class AlpacaBroker:
@@ -31,6 +31,10 @@ class AlpacaBroker:
         from alpaca.trading.client import TradingClient
 
         self.client = TradingClient(self.api_key, self.secret_key, paper=self.paper)
+
+    @property
+    def configured(self) -> bool:
+        return self.client is not None
 
     def get_current_positions(self) -> list[BrokerPosition]:
         if self.client is None:
@@ -67,6 +71,13 @@ class AlpacaBroker:
             limit_price=round(limit_price, 2),
         )
         return self.client.submit_order(order)
+
+    def cancel_open_orders(self) -> None:
+        # Orders are submitted DAY, so they auto-expire at the close. This is a
+        # belt-and-suspenders cleanup for end-of-day cancellation.
+        if self.client is None:
+            return
+        self.client.cancel_orders()
 
 
 def get_eurusd_rate(config: BotConfig) -> float:

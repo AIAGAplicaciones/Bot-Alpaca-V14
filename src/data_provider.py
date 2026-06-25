@@ -4,99 +4,72 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-import pandas as pd
 from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
-class DataValidationResult:
-    ok: bool
-    reason: str = "ok"
+class PriceQuote:
+    symbol: str
+    price: float
+    as_of: datetime
+
+
+class PriceError(RuntimeError):
+    """Raised when prices are missing, zero/negative, or stale."""
 
 
 class AlpacaDataProvider:
-    """Daily OHLCV bars from Alpaca's market data API.
+    """Latest daily prices for the rebalancer.
 
-    Replaces the previous Yahoo Finance source, which Yahoo blocks from cloud
-    datacenter IPs (the deploy host), returning empty bodies and JSONDecodeError.
+    Uses Alpaca's market data API (the deploy host is blocked by Yahoo, so we
+    do not use yfinance in production). The backtest, run locally, still uses
+    yfinance separately.
     """
 
-    def __init__(self, years: int = 5):
+    def __init__(self, max_stale_days: int = 5):
         load_dotenv()
         self.api_key = os.getenv("ALPACA_API_KEY", "")
         self.secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-        # Free Alpaca accounts only have access to the IEX feed.
         self.feed = os.getenv("ALPACA_DATA_FEED", "iex").lower()
-        self.years = years
+        self.max_stale_days = max_stale_days
 
         if not self.api_key or not self.secret_key:
-            raise RuntimeError("alpaca_data_credentials_missing")
+            raise PriceError("alpaca_data_credentials_missing")
 
         from alpaca.data.historical import StockHistoricalDataClient
 
         self.client = StockHistoricalDataClient(self.api_key, self.secret_key)
 
-    def download_daily(self, symbols: list[str], min_days: int = 252) -> dict[str, pd.DataFrame]:
-        from alpaca.data.enums import Adjustment, DataFeed
+    def get_latest_prices(self, symbols: list[str]) -> dict[str, float]:
+        """Return {symbol: last_close_usd}. Raises PriceError on any problem."""
+        from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
 
-        start = datetime.now(timezone.utc) - timedelta(days=self.years * 365)
+        start = datetime.now(timezone.utc) - timedelta(days=10)
         feed = DataFeed.IEX if self.feed == "iex" else DataFeed.SIP
-
         request = StockBarsRequest(
             symbol_or_symbols=symbols,
             timeframe=TimeFrame.Day,
             start=start,
-            # Split- and dividend-adjusted, matching the previous Adj_Close usage.
-            adjustment=Adjustment.ALL,
             feed=feed,
         )
         bars = self.client.get_stock_bars(request)
-        raw = bars.df  # MultiIndex (symbol, timestamp)
+        df = bars.df
 
-        data: dict[str, pd.DataFrame] = {}
+        prices: dict[str, float] = {}
+        now = datetime.now(timezone.utc)
         for symbol in symbols:
-            if raw.empty or symbol not in raw.index.get_level_values("symbol"):
-                continue
-            df = raw.xs(symbol, level="symbol").copy()
-            # Use the actual US trading date as a tz-naive DatetimeIndex.
-            df.index = pd.DatetimeIndex(
-                df.index.tz_convert("America/New_York").normalize().tz_localize(None)
-            )
-            df = df.rename(
-                columns={
-                    "open": "Open",
-                    "high": "High",
-                    "low": "Low",
-                    "close": "Close",
-                    "volume": "Volume",
-                }
-            )
-            # Bars are already adjusted; the latest bar's adjusted close equals the
-            # raw last price, so order pricing stays accurate.
-            df["Adj_Close"] = df["Close"]
-            df = df[["Open", "High", "Low", "Close", "Adj_Close", "Volume"]]
-            data[symbol] = df.dropna()
-
-        self.validate(data, min_days=min_days, require_symbols=symbols)
-        return data
-
-    @staticmethod
-    def validate(data: dict[str, pd.DataFrame], min_days: int, require_symbols: list[str]) -> DataValidationResult:
-        for symbol in require_symbols:
-            if symbol not in data:
-                raise ValueError(f"missing_data_for_symbol:{symbol}")
-            df = data[symbol]
-            if len(df) < min_days:
-                raise ValueError(f"insufficient_history:{symbol}:{len(df)}")
-            required_cols = {"Open", "High", "Low", "Close", "Adj_Close", "Volume"}
-            missing = required_cols - set(df.columns)
-            if missing:
-                raise ValueError(f"missing_columns:{symbol}:{sorted(missing)}")
-            latest = df.iloc[-1]
-            if latest["Adj_Close"] <= 0 or latest["Close"] <= 0:
-                raise ValueError(f"invalid_price:{symbol}")
-            if latest["Volume"] <= 0:
-                raise ValueError(f"invalid_volume:{symbol}")
-        return DataValidationResult(ok=True)
+            if df.empty or symbol not in df.index.get_level_values("symbol"):
+                raise PriceError(f"missing_price:{symbol}")
+            sub = df.xs(symbol, level="symbol")
+            last_ts = sub.index[-1].to_pydatetime()
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            price = float(sub["close"].iloc[-1])
+            if price <= 0:
+                raise PriceError(f"invalid_price:{symbol}:{price}")
+            if (now - last_ts).days > self.max_stale_days:
+                raise PriceError(f"stale_price:{symbol}:{last_ts.date()}")
+            prices[symbol] = price
+        return prices
