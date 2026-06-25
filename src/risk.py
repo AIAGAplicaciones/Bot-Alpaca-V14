@@ -29,12 +29,23 @@ class RiskManager:
             return RiskCheck(False, "max_exposure_reached")
         return RiskCheck(True)
 
-    def can_send_real_orders(self) -> RiskCheck:
-        if self.config.mode != "real":
-            return RiskCheck(False, "mode_is_not_real")
-        if not self.config.real_trading_enabled:
-            return RiskCheck(False, "real_trading_disabled")
-        return RiskCheck(True)
+    def can_trade(self, broker_is_paper: bool) -> RiskCheck:
+        """Decide whether and where orders may be sent.
+
+        - mode=paper -> trade ONLY against an Alpaca paper account (fake money).
+          If the account is live, refuse (avoids real money in "paper" mode).
+        - mode=real  -> trade only if real_trading_enabled. Real money only when
+          the account is live (ALPACA_PAPER=false); otherwise it is Alpaca paper.
+        """
+        if self.config.mode == "paper":
+            if not broker_is_paper:
+                return RiskCheck(False, "paper_mode_requires_paper_account")
+            return RiskCheck(True, "alpaca_paper")
+        if self.config.mode == "real":
+            if not self.config.real_trading_enabled:
+                return RiskCheck(False, "real_trading_disabled")
+            return RiskCheck(True, "alpaca_paper" if broker_is_paper else "live")
+        return RiskCheck(False, "unknown_mode")
 
     def evaluate_kill_switch(
         self,

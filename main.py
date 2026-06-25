@@ -100,16 +100,26 @@ def run(dry_run: bool = False, force: bool = False) -> None:
             store.record_run({**base, "status": "blocked", "reason": exp.reason})
             return
 
-        # Paper / dry-run: compute and log only, never submit.
-        real = risk.can_send_real_orders()
-        if dry_run or not real.ok:
-            reason = "dry_run" if dry_run else real.reason
-            logger.portfolio({**base, "event": "no_real_orders", "reason": reason})
-            print(f"Modo paper/dry-run: no se envían órdenes reales ({reason}).")
+        # Order submission gate.
+        if not broker.configured:
+            logger.portfolio({**base, "event": "no_orders", "reason": "broker_not_configured"})
+            print("Broker no configurado (faltan claves Alpaca): no se envían órdenes.")
+            store.record_run({**base, "status": "no_broker"})
+            return
+
+        trade = risk.can_trade(broker.paper)
+        if dry_run or not trade.ok:
+            reason = "dry_run" if dry_run else trade.reason
+            logger.portfolio({**base, "event": "no_orders", "reason": reason})
+            print(f"No se envían órdenes ({reason}).")
             store.record_run({**base, "status": "simulated", "reason": reason})
             return
 
-        # Real path (mode=real AND real_trading_enabled). Sells first, then buys.
+        account_kind = "Alpaca Paper (dinero falso)" if broker.paper else "REAL (dinero real)"
+        print(f"Enviando órdenes a cuenta {account_kind}...")
+        logger.portfolio({**base, "event": "sending_orders", "account": trade.reason})
+
+        # Execute: sells first, then buys.
         open_order_symbols = broker.get_open_order_symbols() if config.prevent_duplicate_orders else set()
         order_error_count = 0
         executed = 0

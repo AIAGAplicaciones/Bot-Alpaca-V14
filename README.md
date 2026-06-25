@@ -36,17 +36,21 @@ capital:
   total_target_exposure_eur: 400
 ```
 
-El bot **no envía órdenes** salvo que se active explícitamente:
+Dónde van las órdenes según la configuración:
 
-```yaml
-bot:
-  mode: real
-  real_trading_enabled: true
-```
+| `mode` | `real_trading_enabled` | `ALPACA_PAPER` | Resultado |
+|--------|------------------------|----------------|-----------|
+| paper  | (ignorado)             | true           | Compra en **Alpaca Paper** (dinero falso) |
+| paper  | (ignorado)             | false          | **Bloqueado** (no toca cuenta real en modo paper) |
+| real   | false                  | cualquiera     | **No opera** (real desactivado) |
+| real   | true                   | true           | Compra en Alpaca Paper (dinero falso) |
+| real   | true                   | false          | Compra con **dinero real** |
 
-Progresión recomendada: `paper` (solo calcula y registra) → Alpaca Paper
-(`mode: real` + `ALPACA_PAPER=true`, sin dinero real) → real
-(`ALPACA_PAPER=false`).
+`--dry-run` nunca envía órdenes (solo calcula y registra). El dinero real solo
+es posible con `mode: real` + `real_trading_enabled: true` + `ALPACA_PAPER=false`.
+
+Progresión recomendada: `paper` con `--dry-run` (solo logs) → `paper`
+(dinero falso en Alpaca) → real.
 
 ## Variables de entorno (Railway)
 

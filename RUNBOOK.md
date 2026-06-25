@@ -27,13 +27,15 @@ python main.py --dry-run
 
 ## Activación gradual
 
-1. **Paper interno** (defecto): `mode: paper`. Solo calcula y registra.
-2. **Alpaca Paper** (sin dinero real): `mode: real`, `real_trading_enabled: true`,
-   `ALPACA_PAPER=true`.
-3. **Real**: lo anterior con `ALPACA_PAPER=false`.
+1. **Solo logs**: `mode: paper` + ejecutar con `--dry-run`. Calcula y registra,
+   no envía nada. Útil para revisar la primera decisión.
+2. **Alpaca Paper (dinero falso)** — defecto del deploy: `mode: paper` +
+   `ALPACA_PAPER=true` + claves Alpaca. El bot compra de verdad en la cuenta
+   paper de Alpaca (sin dinero real).
+3. **Real**: `mode: real` + `real_trading_enabled: true` + `ALPACA_PAPER=false`.
 
-No pasar a real hasta tener semanas de paper sin errores ni posiciones
-inesperadas.
+El bot se niega a operar con dinero real si está en `mode: paper`. No pasar a
+real hasta tener semanas en Alpaca Paper sin errores ni posiciones inesperadas.
 
 ## Apagado de emergencia
 

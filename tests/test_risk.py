@@ -42,14 +42,28 @@ def test_exposure_limit():
     assert not risk.validate_exposure(500).ok
 
 
-def test_cannot_send_real_orders_in_paper():
-    risk = RiskManager(make_config(mode="paper", real=False))
-    assert not risk.can_send_real_orders().ok
+def test_paper_mode_trades_on_paper_account():
+    risk = RiskManager(make_config(mode="paper"))
+    assert risk.can_trade(broker_is_paper=True).ok
 
 
-def test_can_send_real_orders_when_real_enabled():
+def test_paper_mode_refuses_live_account():
+    risk = RiskManager(make_config(mode="paper"))
+    result = risk.can_trade(broker_is_paper=False)
+    assert not result.ok
+    assert result.reason == "paper_mode_requires_paper_account"
+
+
+def test_real_mode_blocked_without_flag():
+    risk = RiskManager(make_config(mode="real", real=False))
+    assert not risk.can_trade(broker_is_paper=False).ok
+
+
+def test_real_mode_live_when_enabled_and_not_paper():
     risk = RiskManager(make_config(mode="real", real=True))
-    assert risk.can_send_real_orders().ok
+    result = risk.can_trade(broker_is_paper=False)
+    assert result.ok
+    assert result.reason == "live"
 
 
 def test_kill_switch_data_missing():
