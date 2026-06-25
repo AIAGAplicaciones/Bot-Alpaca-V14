@@ -5,7 +5,7 @@ from pathlib import Path
 
 from src.broker_alpaca import AlpacaBroker, calculate_quantity
 from src.config import load_config
-from src.data_provider import YahooDataProvider
+from src.data_provider import AlpacaDataProvider
 from src.logger import JsonlLogger
 from src.portfolio import build_rebalance_plan
 from src.risk import RiskManager
@@ -16,7 +16,7 @@ from src.strategy import MonthlyMomentumStrategy
 def run(dry_run: bool = False, force: bool = False) -> None:
     config = load_config(Path(__file__).with_name("config.yaml"))
     logger = JsonlLogger(Path(__file__).parent / config.log_dir)
-    data_provider = YahooDataProvider()
+    data_provider = AlpacaDataProvider()
     strategy = MonthlyMomentumStrategy(config)
     risk = RiskManager(config)
     broker = AlpacaBroker(config)
