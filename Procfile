@@ -1,1 +1,1 @@
-worker: python main.py --force
+worker: python main.py
