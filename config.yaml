@@ -21,7 +21,7 @@ portfolio:
 
 capital:
   currency: EUR
-  total_target_exposure_eur: 400
+  total_target_exposure_eur: 10000
   allow_fractional_shares: true
   fallback_fx_rate: 1.08
 
@@ -42,7 +42,7 @@ risk:
   allow_margin: false
   allow_short: false
   allow_leverage: false
-  max_total_exposure_eur: 400
+  max_total_exposure_eur: 10000
   max_symbols:
     - SPY
     - QQQ
@@ -50,8 +50,8 @@ risk:
 
 kill_switch:
   enabled: true
-  max_daily_loss_eur: 20
-  max_weekly_loss_eur: 40
+  max_daily_loss_eur: 1000
+  max_weekly_loss_eur: 2000
   max_order_error_count: 1
   stop_if_data_missing: true
   stop_if_price_stale: true
