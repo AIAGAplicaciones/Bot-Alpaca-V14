@@ -1,0 +1,87 @@
+bot:
+  name: ETF_Momentum_Rotation_v1
+  mode: paper
+  real_trading_enabled: false
+
+market:
+  region: US
+  session_only: true
+  trade_premarket: false
+  trade_afterhours: false
+  intraday_trading: false
+
+strategy:
+  type: monthly_etf_momentum_rotation
+  rebalance_frequency: monthly
+  signal_timing: last_trading_day_after_close
+  execution_timing: next_trading_day_regular_session
+  max_positions: 2
+
+universe:
+  risk_etfs:
+    - SPY
+    - QQQ
+    - XLK
+    - XLV
+    - XLE
+    - GLD
+    - TLT
+  defensive_asset: SHY
+
+defensive_mode:
+  enabled: true
+  use_cash: true
+  asset: SHY
+
+capital:
+  currency: EUR
+  capital_per_etf_eur: 200
+  max_total_exposure_eur: 400
+  allow_fractional_shares: true
+  fallback_fx_rate: 1.08
+
+indicators:
+  sma_trend_period: 200
+  return_3m_sessions: 63
+  return_6m_sessions: 126
+  momentum_formula:
+    return_6m_weight: 0.6
+    return_3m_weight: 0.4
+
+filters:
+  require_close_above_sma200: true
+  require_positive_momentum_score: true
+
+orders:
+  type: limit
+  buy_limit_buffer: 0.002
+  sell_limit_buffer: 0.002
+  cancel_unfilled_end_of_day: true
+  prevent_duplicate_orders: true
+
+risk:
+  allow_margin: false
+  allow_short: false
+  allow_leverage: false
+  max_positions: 2
+  max_capital_per_etf_eur: 200
+  max_total_exposure_eur: 400
+  max_orders_per_day: 4
+
+kill_switch:
+  enabled: true
+  max_daily_loss_eur: 20
+  max_weekly_loss_eur: 40
+  max_order_error_count: 1
+  stop_if_data_missing: true
+  stop_if_price_stale: true
+  stop_if_broker_unreachable: true
+  stop_if_unexpected_position: true
+
+logging:
+  save_signals: true
+  save_portfolio_decisions: true
+  save_orders: true
+  save_errors: true
+  save_rejected_signals: true
+  directory: logs
