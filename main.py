@@ -17,6 +17,7 @@ def run(dry_run: bool = False, force: bool = False) -> None:
     config = load_config(Path(__file__).with_name("config.yaml"))
     logger = JsonlLogger(Path(__file__).parent / config.log_dir)
     store = get_store(os.getenv("DATABASE_URL"))
+    print(f"DB: {'PostgreSQL conectado' if store.enabled else 'sin DB (solo logs JSONL)'}")
     strategy = ThresholdRebalanceStrategy(config)
     risk = RiskManager(config)
     broker = AlpacaBroker(config)

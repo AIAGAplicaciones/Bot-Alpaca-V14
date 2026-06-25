@@ -185,6 +185,8 @@ def get_store(database_url: str | None = None) -> NullStore | PostgresStore:
         store = PostgresStore(dsn)
         store.init_schema()
         return store
-    except Exception:
-        # Connection or driver problem: degrade to JSONL-only logging.
+    except Exception as exc:
+        # Connection or driver problem: degrade to JSONL-only logging, but make
+        # the reason visible (Railway captures stdout).
+        print(f"[db] PostgreSQL NO disponible -> usando solo logs JSONL. Motivo: {exc!r}")
         return NullStore()
